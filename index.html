@@ -256,6 +256,44 @@
             gap: 5px;
         }
 
+        /* --- FITUR BARU: DISKON BADGE & PRICE --- */
+        .discount-badge {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: #d32f2f;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 1rem;
+            z-index: 5;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+
+        .original-price-strike {
+            text-decoration: line-through;
+            color: #999;
+            font-size: 0.6em;
+            margin-right: 10px;
+        }
+        
+        /* Style untuk harga promo di cart/struk */
+        .promo-text-green { color: #2e7d32; font-weight: bold; }
+        .promo-row { display: flex; justify-content: space-between; margin-bottom: 8px; color: #2e7d32; }
+
+        /* Style Promo Input */
+        .promo-group {
+            display: flex;
+            gap: 10px;
+        }
+        .promo-btn {
+            background: #6c757d; color: white; border: none; padding: 0 20px; border-radius: 8px; cursor: pointer; font-weight: bold;
+        }
+        .promo-btn:hover { background: #5a6268; }
+        .promo-message { font-size: 0.9rem; margin-top: 5px; min-height: 20px; }
+
+
         @keyframes pulse {
             0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 69, 0, 0.7); }
             70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(255, 69, 0, 0); }
@@ -1143,6 +1181,17 @@
                         <option value="Take Away">Take Away</option>
                     </select>
                 </div>
+
+                <!-- FORM KODE PROMO -->
+                <div class="form-group">
+                    <label>Kode Promo (Opsional):</label>
+                    <div class="promo-group">
+                        <input type="text" id="promo-code" placeholder="Masukan kode..." style="text-transform:uppercase">
+                        <button type="button" class="promo-btn" onclick="checkPromo()">Cek</button>
+                    </div>
+                    <div id="promo-message" class="promo-message"></div>
+                </div>
+
                 <div class="modal-buttons">
                     <button type="submit" class="checkout-btn">Lanjut ke Pembayaran</button>
                     <button type="button" class="btn-cancel" onclick="closeModal('checkout-modal')">Batal</button>
@@ -1157,10 +1206,18 @@
             <div class="receipt-info">
                 <h4>📋 Detail Pesanan</h4>
                 <div id="payment-items"></div>
+                <hr style="margin: 10px 0; border: 0; border-top: 1px dashed #ccc;">
                 <div class="receipt-line">
                     <span>Subtotal:</span>
                     <span id="payment-subtotal"></span>
                 </div>
+                
+                <!-- ROW DISKON (Hidden by default) -->
+                <div class="receipt-line promo-row" id="payment-discount-row" style="display:none;">
+                    <span>Diskon (<span id="payment-discount-name"></span>):</span>
+                    <span id="payment-discount-amount"></span>
+                </div>
+
                 <div class="receipt-line" style="display: none;">
                     <span>Pajak (10%):</span>
                     <span id="payment-tax"></span>
@@ -1235,10 +1292,18 @@
                 </div>
                 <div id="success-receipt-items" style="padding-left: 10px;"></div>
                 <hr style="border: 0; border-top: 1px solid #ddd; margin: 15px 0;">
+                
                 <div class="receipt-line">
                     <span>Sub Total</span>
                     <span id="success-subtotal"></span>
                 </div>
+                
+                <!-- DISKON SUCCESS ROW -->
+                <div class="receipt-line promo-row" id="success-discount-row" style="display:none;">
+                    <span>Hemat:</span>
+                    <span id="success-discount-val"></span>
+                </div>
+
                 <div class="receipt-line" style="display: none;">
                     <span>PPN 10%</span>
                     <span id="success-tax"></span>
@@ -1312,6 +1377,10 @@
         let currentMenuItems = [];
         let currentModalItem = null;
         let currentModalQuantity = 1;
+        
+        // VARIABEL PROMO GLOBAL
+        let appliedPromoCode = null;
+        let appliedDiscountPercent = 0; // dalam desimal, misal 0.1 untuk 10%
 
         document.addEventListener('DOMContentLoaded', function () {
             initializeAppLogic();
@@ -1374,22 +1443,28 @@
 
             matches.forEach(item => {
                 // --- PERBAIKAN LOGIKA KETERSEDIAAN ---
-                // Jika isAvailable undefined atau null, anggap true (Tersedia)
-                // Hanya dianggap HABIS jika secara eksplisit diset ke false
                 const isAvailable = item.isAvailable !== false; 
                 
                 // Hitung harga terendah
                 let priceDisplay = "Harga Tdk Tersedia";
+                let basePrice = 0;
+
                 if (item.priceOptions && item.priceOptions.length > 0) {
                     const prices = item.priceOptions.map(p => p.price);
-                    const minPrice = Math.min(...prices);
-                    priceDisplay = `Mulai Rp ${minPrice.toLocaleString('id-ID')}`;
+                    basePrice = Math.min(...prices);
+                    priceDisplay = `Mulai Rp ${basePrice.toLocaleString('id-ID')}`;
                 } else if (item.price) {
-                    priceDisplay = `Rp ${item.price.toLocaleString('id-ID')}`;
+                    basePrice = item.price;
+                    priceDisplay = `Rp ${basePrice.toLocaleString('id-ID')}`;
+                }
+                
+                // [LOGIKA DISKON PER ITEM DI PENCARIAN]
+                if (item.discountPercent && item.discountPercent > 0) {
+                     const discPrice = basePrice * (1 - item.discountPercent / 100);
+                     priceDisplay = `<span style="text-decoration:line-through; font-size:0.8em; color:#999;">${priceDisplay}</span> <span style="color:#d32f2f;">Rp ${discPrice.toLocaleString('id-ID')}</span>`;
                 }
 
                 // --- PERBAIKAN GAMBAR ---
-                // Menambahkan elemen gambar thumbnail
                 let thumbHtml = '';
                 if (item.imageUrl && item.imageUrl.trim() !== '') {
                     thumbHtml = `<img src="${item.imageUrl}" class="search-item-thumb" alt="${item.name}">`;
@@ -1401,7 +1476,6 @@
                 div.className = 'search-item-result';
                 div.onclick = () => selectItemFromSearch(item);
                 
-                // Layout Flexbox: [Thumbnail] - [Info Menu] - [Harga]
                 div.innerHTML = `
                     ${thumbHtml}
                     <div class="search-item-info">
@@ -1416,20 +1490,14 @@
         }
 
         window.selectItemFromSearch = function(item) {
-            // Cek ketersediaan dengan logika yang diperbaiki
             if (item.isAvailable === false) {
                 showNotification("Maaf, item ini sedang habis.", true);
                 return;
             }
-            
-            // Tutup modal search
             closeModal('search-modal');
-            
-            // Buka modal opsi item
             prepareAndOpenItemModal(item);
         }
 
-        // Fungsi pembantu baru untuk membuka modal (refactoring dari showItemOptions)
         function prepareAndOpenItemModal(item) {
             currentModalItem = item;
             currentModalQuantity = 1;
@@ -1569,19 +1637,42 @@
 
             const soldOutHtml = !isAvailable ? `<div class="slide-sold-out">HABIS</div>` : '';
             
-            // [VISUAL BEST SELLER]
-            const badgeHtml = isBestSeller ? 
-                `<div class="best-seller-badge">🔥 Paling Laku</div>` : '';
+            // [VISUAL BADGES]
+            let badgeHtml = '';
+            if (isBestSeller) {
+                badgeHtml += `<div class="best-seller-badge">🔥 Paling Laku</div>`;
+            }
+            if (item.discountPercent && item.discountPercent > 0) {
+                badgeHtml += `<div class="discount-badge">${item.discountPercent}% OFF</div>`;
+            }
 
+            // [LOGIKA TAMPILAN HARGA CORET]
             let priceDisplayHtml = '';
+            let basePrice = 0;
+            let hasMultiple = false;
+
             if (item.priceOptions && item.priceOptions.length > 0) {
-                const firstPrice = item.priceOptions[0].price;
-                const pricePrefix = item.priceOptions.length > 1 ? 'Mulai dari ' : '';
-                priceDisplayHtml = `<div class="slide-price">${pricePrefix}Rp ${firstPrice.toLocaleString('id-ID')}</div>`;
+                basePrice = item.priceOptions[0].price;
+                hasMultiple = item.priceOptions.length > 1;
             } else if (item.price) {
-                priceDisplayHtml = `<div class="slide-price">Rp ${item.price.toLocaleString('id-ID')}</div>`;
-            } else {
+                basePrice = item.price;
+            }
+
+            let finalPrice = basePrice;
+            let strikeHtml = '';
+
+            if (item.discountPercent && item.discountPercent > 0) {
+                finalPrice = basePrice * (1 - item.discountPercent / 100);
+                strikeHtml = `<span class="original-price-strike">Rp ${basePrice.toLocaleString('id-ID')}</span>`;
+            }
+
+            const pricePrefix = hasMultiple ? 'Mulai dari ' : '';
+            
+            // Jika harga tidak tersedia (0 atau undefined)
+            if (basePrice === 0 && !hasMultiple) {
                 priceDisplayHtml = `<div class="slide-price">Harga tidak tersedia</div>`;
+            } else {
+                priceDisplayHtml = `<div class="slide-price">${pricePrefix}${strikeHtml}Rp ${finalPrice.toLocaleString('id-ID')}</div>`;
             }
 
             slide.innerHTML = `
@@ -1606,7 +1697,6 @@
         window.showItemOptions = function (itemIndex) {
             const item = currentMenuItems[itemIndex];
             if (!item) return;
-            // Menggunakan fungsi helper baru agar konsisten dengan search
             prepareAndOpenItemModal(item);
         }
 
@@ -1633,10 +1723,18 @@
                 selectedPrice = currentModalItem.price;
             }
 
+            // [HITUNG DISKON PER ITEM DI MODAL]
+            let discountInfo = '';
+            if (currentModalItem.discountPercent && currentModalItem.discountPercent > 0) {
+                const originalTotal = selectedPrice * currentModalQuantity;
+                selectedPrice = selectedPrice * (1 - currentModalItem.discountPercent / 100);
+                discountInfo = ` (Diskon ${currentModalItem.discountPercent}%)`;
+            }
+
             document.getElementById('modal-qty-display').textContent = currentModalQuantity;
 
             const totalPrice = (selectedPrice || 0) * currentModalQuantity;
-            document.getElementById('modal-item-price').textContent = `Rp ${totalPrice.toLocaleString('id-ID')}`;
+            document.getElementById('modal-item-price').textContent = `Rp ${totalPrice.toLocaleString('id-ID')}${discountInfo}`;
         }
 
         window.addItemFromModal = function () {
@@ -1663,6 +1761,14 @@
             } else if (currentModalItem.price) {
                 selectedPrice = currentModalItem.price;
             }
+            
+            // [SIMPAN DATA DISKON KE KERANJANG]
+            let finalPrice = selectedPrice;
+            let appliedItemDiscount = 0;
+            if (currentModalItem.discountPercent && currentModalItem.discountPercent > 0) {
+                finalPrice = selectedPrice * (1 - currentModalItem.discountPercent / 100);
+                appliedItemDiscount = currentModalItem.discountPercent;
+            }
 
             const itemKey = selectedVariantName ? `${itemName} (${selectedVariantName})` : itemName;
 
@@ -1672,11 +1778,13 @@
                 existingItem.quantity += currentModalQuantity;
             } else {
                 cart.push({
-                    id: itemId, // [PENTING] Masukkan ID ke keranjang
+                    id: itemId,
                     key: itemKey,
                     name: itemName,
                     variant: selectedVariantName,
-                    price: selectedPrice,
+                    price: finalPrice, // Harga yg disimpan sudah diskon
+                    originalPrice: selectedPrice,
+                    discountPercent: appliedItemDiscount,
                     quantity: currentModalQuantity
                 });
             }
@@ -1772,7 +1880,6 @@
             const cartItemsContainer = document.getElementById('cart-items');
             const cartCount = document.getElementById('cart-count');
             const cartSubtotal = document.getElementById('cart-subtotal');
-            const cartTax = document.getElementById('cart-tax');
             const cartTotal = document.getElementById('cart-total');
             const checkoutBtn = document.querySelector('.cart-total .checkout-btn');
 
@@ -1790,18 +1897,28 @@
                     </div>
                 `;
                 checkoutBtn.disabled = true;
+                cartSubtotal.textContent = "Rp 0";
+                cartTotal.textContent = "Rp 0";
             } else {
                 cart.forEach((item, index) => {
                     const itemTotal = item.price * item.quantity;
                     subtotal += itemTotal;
                     itemCount += item.quantity;
 
+                    // Tanda promo di cart list
+                    const promoLabel = item.discountPercent > 0 
+                        ? `<span style="color:#d32f2f; font-size:0.8em; margin-left:5px;">(Promo ${item.discountPercent}%)</span>` 
+                        : '';
+
                     cartItemsContainer.innerHTML += `
                         <div class="cart-item">
                             <div class="cart-item-info">
                                 <div class="cart-item-name">${item.name}</div>
                                 ${item.variant ? `<div class="cart-item-variant">Varian: ${item.variant}</div>` : ''}
-                                <div class="cart-item-details">${item.quantity} x Rp ${item.price.toLocaleString('id-ID')}</div>
+                                <div class="cart-item-details">
+                                    ${item.quantity} x Rp ${item.price.toLocaleString('id-ID')}
+                                    ${promoLabel}
+                                </div>
                             </div>
                             <div class="cart-item-actions">
                                 <div class="cart-item-price">Rp ${itemTotal.toLocaleString('id-ID')}</div>
@@ -1813,13 +1930,10 @@
                 checkoutBtn.disabled = false;
             }
 
-            const tax = 0;
-            const total = subtotal + tax;
-
+            // Total di Sidebar Cart belum termasuk kode promo checkout
             cartCount.textContent = itemCount;
             cartSubtotal.textContent = `Rp ${subtotal.toLocaleString('id-ID')}`;
-            cartTax.textContent = `Rp ${tax.toLocaleString('id-ID')}`;
-            cartTotal.textContent = `Rp ${total.toLocaleString('id-ID')}`;
+            cartTotal.textContent = `Rp ${subtotal.toLocaleString('id-ID')}`;
         }
 
         window.removeFromCart = function (index) {
@@ -1834,6 +1948,13 @@
         window.resetCart = function () {
             cart = [];
             selectedPaymentMethod = null;
+            
+            // Reset Promo
+            appliedPromoCode = null;
+            appliedDiscountPercent = 0;
+            document.getElementById('promo-code').value = '';
+            document.getElementById('promo-message').textContent = '';
+            
             updateCartDisplay();
             document.getElementById('checkout-form').reset();
 
@@ -1853,13 +1974,59 @@
             }
             document.getElementById('checkout-modal').classList.add('active');
         }
+        
+        // [FITUR BARU: CEK KODE PROMO]
+        window.checkPromo = function() {
+            const codeInput = document.getElementById('promo-code');
+            const messageEl = document.getElementById('promo-message');
+            const code = codeInput.value.toUpperCase().trim();
+            
+            const today = new Date().getDay(); // 5 = Jumat
+
+            if (!code) {
+                messageEl.textContent = "Masukkan kode promo.";
+                messageEl.style.color = "red";
+                return;
+            }
+
+            // LOGIKA KODE PROMO
+            if (code === 'PAYBOSS10') {
+                appliedPromoCode = 'PAYBOSS10';
+                appliedDiscountPercent = 0.10; // 10%
+                messageEl.textContent = "Kode Valid! Diskon 10% diterapkan.";
+                messageEl.style.color = "green";
+            } else if (code === 'JUMATBERKAH') {
+                if (today === 5) { // Hanya hari Jumat
+                    appliedPromoCode = 'JUMATBERKAH';
+                    appliedDiscountPercent = 0.20; // 20%
+                    messageEl.textContent = "Alhamdulillah! Diskon Jumat Berkah 20% diterapkan.";
+                    messageEl.style.color = "green";
+                } else {
+                    appliedPromoCode = null;
+                    appliedDiscountPercent = 0;
+                    messageEl.textContent = "Kode ini hanya berlaku hari Jumat.";
+                    messageEl.style.color = "red";
+                }
+            } else {
+                appliedPromoCode = null;
+                appliedDiscountPercent = 0;
+                messageEl.textContent = "Kode promo tidak ditemukan.";
+                messageEl.style.color = "red";
+            }
+        }
 
         window.processCheckout = function (event) {
             event.preventDefault();
 
-            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const tax = 0;
-            const total = subtotal + tax;
+            // Hitung Angka Final dengan Diskon Transaksi
+            let subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            let discountAmount = 0;
+            
+            if (appliedDiscountPercent > 0) {
+                discountAmount = subtotal * appliedDiscountPercent;
+            }
+            
+            const total = subtotal - discountAmount;
 
             const paymentItems = document.getElementById('payment-items');
             paymentItems.innerHTML = '';
@@ -1873,7 +2040,17 @@
             });
 
             document.getElementById('payment-subtotal').textContent = `Rp ${subtotal.toLocaleString('id-ID')}`;
-            document.getElementById('payment-tax').textContent = `Rp ${tax.toLocaleString('id-ID')}`;
+            
+            // Tampilkan Baris Diskon di Modal Payment
+            const discountRow = document.getElementById('payment-discount-row');
+            if (discountAmount > 0) {
+                discountRow.style.display = 'flex';
+                document.getElementById('payment-discount-name').textContent = appliedPromoCode;
+                document.getElementById('payment-discount-amount').textContent = `-Rp ${discountAmount.toLocaleString('id-ID')}`;
+            } else {
+                discountRow.style.display = 'none';
+            }
+
             document.getElementById('payment-total').textContent = `Rp ${total.toLocaleString('id-ID')}`;
 
             closeModal('checkout-modal');
@@ -1906,9 +2083,13 @@
             const customerName = document.getElementById('customer-name').value;
             const tableNumber = document.getElementById('table-number').value;
 
+            // Hitung Ulang untuk Data
             const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const tax = 0;
-            const total = subtotal + tax;
+            let discountAmount = 0;
+            if (appliedDiscountPercent > 0) {
+                discountAmount = subtotal * appliedDiscountPercent;
+            }
+            const total = subtotal - discountAmount;
 
             const baseOrderData = {
                 customer: customerName,
@@ -1917,10 +2098,13 @@
                     name: item.name,
                     variant: item.variant || null,
                     qty: item.quantity,
-                    price: item.price
+                    price: item.price,
+                    note: item.discountPercent > 0 ? `Promo Item ${item.discountPercent}%` : ''
                 })),
                 subtotal: subtotal,
-                tax: tax,
+                discount: discountAmount,
+                promoCode: appliedPromoCode || '',
+                tax: 0,
                 total: total,
                 status: 'pending',
                 paymentMethod: selectedPaymentMethod,
@@ -1998,7 +2182,16 @@
                 });
 
                 document.getElementById('success-subtotal').textContent = `Rp ${subtotal.toLocaleString('id-ID')}`;
-                document.getElementById('success-tax').textContent = `Rp ${tax.toLocaleString('id-ID')}`;
+                
+                // Tampilkan diskon di Success Modal
+                const successDiscountRow = document.getElementById('success-discount-row');
+                if (discountAmount > 0) {
+                    successDiscountRow.style.display = 'flex';
+                    document.getElementById('success-discount-val').textContent = `-Rp ${discountAmount.toLocaleString('id-ID')}`;
+                } else {
+                    successDiscountRow.style.display = 'none';
+                }
+
                 document.getElementById('success-total').textContent = `Rp ${total.toLocaleString('id-ID')}`;
                 document.getElementById('success-payment-method').textContent = selectedPaymentMethod;
 
@@ -2022,7 +2215,13 @@
             const table = document.getElementById('success-table').textContent;
             const date = document.getElementById('success-date').textContent;
             const total = document.getElementById('success-total').textContent; 
+            const subtotal = document.getElementById('success-subtotal').textContent;
             const queueNumber = document.getElementById('success-queue-number').textContent;
+            
+            // Cek Diskon untuk Struk
+            const discountRow = document.getElementById('success-discount-row');
+            const hasDiscount = discountRow.style.display !== 'none';
+            const discountText = document.getElementById('success-discount-val').textContent;
 
             const receiptWidth = 32; 
             const pad = (str, len, char = ' ') => String(str).padEnd(len, char);
@@ -2057,6 +2256,12 @@
                 receiptText += padLeft(`Rp ${itemTotal.toLocaleString('id-ID')}`, receiptWidth) + "\n";
             });
             receiptText += "--------------------------------\n";
+            
+            if (hasDiscount) {
+                receiptText += pad("Subtotal", 18) + padLeft(subtotal, 14) + "\n";
+                receiptText += pad("Diskon", 18) + padLeft(discountText, 14) + "\n";
+                receiptText += "--------------------------------\n";
+            }
 
             const totalText = total.trim(); 
             receiptText += pad("GRAND TOTAL", 18) + padLeft(totalText, 14) + "\n";
