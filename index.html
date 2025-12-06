@@ -2023,8 +2023,8 @@
 
                 const finalOrderData = { ...baseOrderData, queueNumber: newQueueNumber };
                 const orderDoc = await addDoc(collection(db, "orders"), finalOrderData);
-                /*
-                cart.forEach(async (item) => {
+                // FITUR UPDATE SALES SEMENTARA DIMATIKAN (HEMAT KUOTA)
+                /* cart.forEach(async (item) => {
                     if (item.id) {
                         const menuRef = doc(db, "menu", item.id);
                         await updateDoc(menuRef, { sales: increment(item.quantity) }).catch(err => console.log("Gagal update sales: ", err));
