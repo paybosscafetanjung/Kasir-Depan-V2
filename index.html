@@ -2023,7 +2023,7 @@
 
                 const finalOrderData = { ...baseOrderData, queueNumber: newQueueNumber };
                 const orderDoc = await addDoc(collection(db, "orders"), finalOrderData);
-                /* SEMENTARA DIMATIKAN AGAR HEMAT KUOTA
+                /*
                 cart.forEach(async (item) => {
                     if (item.id) {
                         const menuRef = doc(db, "menu", item.id);
