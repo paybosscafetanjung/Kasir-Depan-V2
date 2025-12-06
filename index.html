@@ -2023,14 +2023,14 @@
 
                 const finalOrderData = { ...baseOrderData, queueNumber: newQueueNumber };
                 const orderDoc = await addDoc(collection(db, "orders"), finalOrderData);
-
+                /* SEMENTARA DIMATIKAN AGAR HEMAT KUOTA
                 cart.forEach(async (item) => {
                     if (item.id) {
                         const menuRef = doc(db, "menu", item.id);
                         await updateDoc(menuRef, { sales: increment(item.quantity) }).catch(err => console.log("Gagal update sales: ", err));
                     }
                 });
-
+                */
                 const now = new Date();
                 const formattedDate = now.toLocaleString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
                 let totalItems = 0; cart.forEach(item => { totalItems += item.quantity; });
