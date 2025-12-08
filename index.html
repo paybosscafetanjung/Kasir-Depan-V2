@@ -1385,7 +1385,8 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, collection, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, getDoc, Timestamp, query, orderBy, where, getDocs, runTransaction, increment, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        // OPTIMASI: Tambahkan getDocs dan hapus realtime listener yang tidak perlu
+        import { getFirestore, collection, getDocs, addDoc, serverTimestamp, doc, updateDoc, getDoc, Timestamp, query, orderBy, where, runTransaction, increment, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyB0nHqdAw_dV9pHcQ_cSnWtNsn4CwwwUNc",
@@ -1436,22 +1437,31 @@
             searchInput.addEventListener('input', handleSearchInput);
         });
 
-        function initializeAppLogic() {
+        // PERUBAHAN UTAMA: Gunakan async/await dengan getDocs
+        async function initializeAppLogic() {
             const menuQuery = query(collection(db, 'menu'), orderBy('name'));
 
-            onSnapshot(menuQuery, (snapshot) => {
+            try {
+                // Ambil data sekali jalan (one-time fetch)
+                const snapshot = await getDocs(menuQuery);
+                
                 allMenuItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                renderCategoryButtons();
-                if (!currentCategory && allMenuItems.length > 0) {
-                    const firstCategory = allMenuItems[0].category || 'lainnya';
-                    switchCategory(firstCategory);
+                
+                if (allMenuItems.length === 0) {
+                     document.getElementById('menu-slider').innerHTML = '<div style="color:white; text-align:center; padding: 50px;">Menu kosong.</div>';
                 } else {
-                    switchCategory(currentCategory);
+                    renderCategoryButtons();
+                    if (!currentCategory && allMenuItems.length > 0) {
+                        const firstCategory = allMenuItems[0].category || 'lainnya';
+                        switchCategory(firstCategory);
+                    } else {
+                        switchCategory(currentCategory);
+                    }
                 }
-            }, (error) => {
+            } catch (error) {
                 console.error("Error mengambil data menu: ", error);
                 document.getElementById('menu-slider').innerHTML = '<div style="color:white; text-align:center; padding: 50px;">Gagal memuat menu. Periksa koneksi internet Anda.</div>';
-            });
+            }
 
             updateCartDisplay();
         }
