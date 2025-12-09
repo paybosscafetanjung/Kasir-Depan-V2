@@ -904,6 +904,13 @@
             box-sizing: border-box;
         }
 
+        /* STYLE BARU UNTUK OPTION TERISI */
+        .occupied-table {
+            color: #d32f2f;
+            background-color: #ffebee;
+            font-weight: bold;
+        }
+
         .form-group input:focus,
         .form-group select:focus {
             outline: none;
@@ -1150,6 +1157,7 @@
                     <label for="table-number">Nomor Meja:</label>
                     <select id="table-number" required>
                         <option value="">Pilih Meja</option>
+                        <!-- Opsi Meja -->
                         <option value="1">Meja 1</option>
                         <option value="2">Meja 2</option>
                         <option value="3">Meja 3</option>
@@ -1364,6 +1372,7 @@
 
     <div class="modal" id="item-options-modal">
         <div class="modal-content">
+            <h3>Item Options</h3>
             <h3 id="modal-item-name">Nama Item</h3>
             <p id="modal-item-description" style="color: #666; margin-top: -15px;">Deskripsi item.</p>
             <div class="form-group" id="modal-variant-group">
@@ -1851,9 +1860,61 @@
             document.getElementById('confirm-payment-btn').disabled = false;
         }
 
-        window.showCheckout = function () {
+        // --- FITUR BARU: CEK KETERSEDIAAN MEJA LIVE DARI DATABASE ADMIN ---
+        window.showCheckout = async function () {
             if (cart.length === 0) { showNotification('Keranjang masih kosong!', true); return; }
             document.getElementById('checkout-modal').classList.add('active');
+            
+            // Cek meja dari database 'tables' (sumber Floor Monitor)
+            await updateTableAvailability();
+        }
+
+        async function updateTableAvailability() {
+            const selectEl = document.getElementById('table-number');
+            // Reset dulu ke kondisi awal
+            Array.from(selectEl.options).forEach(opt => {
+                opt.disabled = false;
+                opt.textContent = opt.value; 
+                opt.classList.remove('occupied-table');
+            });
+
+            try {
+                // Fetch data dari koleksi 'tables'
+                // Ini adalah koleksi yang sama yang digunakan oleh aplikasi occupancy.html
+                const snapshot = await getDocs(collection(db, "tables"));
+                
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    
+                    // Cek jika statusnya BUKAN 'empty' (artinya occupied, reserved, atau dirty)
+                    if (data.status && data.status !== 'empty') {
+                        let matchValue = null;
+                        
+                        // Logika pencocokan antara data database admin dengan value dropdown di sini
+                        if (data.tableNumber && data.tableNumber <= 33) {
+                            matchValue = data.tableNumber.toString();
+                        } else if (data.name) {
+                             if (data.name.includes('VIP')) matchValue = "VIP Payboss";
+                             else if (data.name.includes('Karaoke 1')) matchValue = "Karaoke Room 1";
+                             else if (data.name.includes('Karaoke 2')) matchValue = "Karaoke Room 2";
+                             else if (data.name.includes('Karaoke 3')) matchValue = "Karaoke Room 3";
+                        }
+
+                        if (matchValue) {
+                            const option = Array.from(selectEl.options).find(opt => opt.value == matchValue);
+                            if (option) {
+                                const statusText = data.status === 'reserved' ? '(Booked)' : '(Terisi)';
+                                option.textContent = `${option.value} ${statusText}`;
+                                option.classList.add('occupied-table');
+                                option.disabled = true; // Nonaktifkan agar tidak bisa dipilih
+                            }
+                        }
+                    }
+                });
+
+            } catch (error) {
+                console.error("Gagal sinkronisasi meja:", error);
+            }
         }
 
         window.checkPromo = function() {
