@@ -1394,7 +1394,8 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        // OPTIMASI: Tambahkan getDocs dan hapus realtime listener yang tidak perlu
+        // OPTIMASI: Import Auth untuk login anonymous dan custom token
+        import { getAuth, signInAnonymously, signInWithCustomToken, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import { getFirestore, collection, getDocs, addDoc, serverTimestamp, doc, updateDoc, getDoc, Timestamp, query, orderBy, where, runTransaction, increment, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -1408,6 +1409,7 @@
         };
 
         const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app); // Initialize Auth
         const db = getFirestore(app);
 
         // --- OPTIMIZATION: ENABLE OFFLINE PERSISTENCE (CACHE) ---
@@ -1428,12 +1430,10 @@
         let currentModalItem = null;
         let currentModalQuantity = 1;
         
-        // VARIABEL PROMO GLOBAL
         let appliedPromoCode = null;
-        let promoType = null; // 'PERCENT', 'FREE_ITEM', 'FULL_FREE'
+        let promoType = null; 
         let promoValue = 0; 
         
-        // VARIABEL UNTUK TRANSAKSI CASH
         let currentTransactionTotal = 0;
         let finalCashAmount = 0;
         let finalChangeAmount = 0;
@@ -1446,12 +1446,41 @@
             searchInput.addEventListener('input', handleSearchInput);
         });
 
-        // PERUBAHAN UTAMA: Gunakan async/await dengan getDocs
+        // PERUBAHAN UTAMA: Login Logic Bertahap (Sequential Fallback)
         async function initializeAppLogic() {
-            const menuQuery = query(collection(db, 'menu'), orderBy('name'));
+            let loginSuccess = false;
 
+            // 1. Coba Login dengan Token Kustom (Jika ada)
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                try {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                    loginSuccess = true;
+                    console.log("Login dengan Token berhasil.");
+                } catch (e) {
+                    console.warn("Login Token gagal, membersihkan sesi...", e);
+                    await signOut(auth); // PENTING: Bersihkan state auth yang nyangkut
+                }
+            }
+
+            // 2. Jika Token Gagal/Tidak Ada, Coba Login Anonim
+            if (!loginSuccess) {
+                try {
+                    await signInAnonymously(auth);
+                    console.log("Login Anonim berhasil.");
+                } catch (anonError) {
+                    console.error("Login Anonim gagal:", anonError);
+                    let msg = "Gagal masuk ke sistem.";
+                    if (anonError.code === 'auth/admin-restricted-operation') {
+                        msg = "PENTING: Aktifkan 'Anonymous' di Firebase Console -> Authentication -> Sign-in method.";
+                    }
+                    document.getElementById('menu-slider').innerHTML = `<div style="color:white; text-align:center; padding: 50px;">${msg}<br><br><small>${anonError.message}</small></div>`;
+                    return; // Stop execution if auth fails completely
+                }
+            }
+            
+            // 3. Setelah Login Berhasil, Ambil Data Menu
             try {
-                // Ambil data sekali jalan (one-time fetch)
+                const menuQuery = query(collection(db, 'menu'), orderBy('name'));
                 const snapshot = await getDocs(menuQuery);
                 
                 allMenuItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -1468,7 +1497,7 @@
                     }
                 }
             } catch (error) {
-                console.error("Error mengambil data menu: ", error);
+                console.error("Gagal memuat menu: ", error);
                 document.getElementById('menu-slider').innerHTML = '<div style="color:white; text-align:center; padding: 50px;">Gagal memuat menu. Periksa koneksi internet Anda.</div>';
             }
 
